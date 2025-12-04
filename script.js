@@ -114,113 +114,125 @@ if (document.getElementById('preview')) {
   });
 
   /* ---------- Camera (iOS + Android) ---------- */
-  useCamera.addEventListener('click', async () => {
-    if (activeSlot === null) return alert('Select a slot first');
+ useCamera.addEventListener('click', async () => {
+  if (activeSlot === null) return alert('Select a slot first');
 
-    const ua = navigator.userAgent || '';
-    const isiOS = /iP(hone|od|ad)/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
+  const ua = navigator.userAgent || '';
+  const isiOS = /iP(hone|od|ad)/.test(ua);
+  const isAndroid = /Android/.test(ua);
 
-    async function openCameraModal(stream) {
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.play();
+  // Check if getUserMedia is supported
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    let constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
 
-      const modal = document.createElement('div');
-      modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.9); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999;';
-      const videoContainer = document.createElement('div');
-      videoContainer.style.cssText = 'position:relative; border-radius:12px; overflow:hidden; box-shadow:0 12px 30px rgba(0,0,0,0.5);';
-      video.style.cssText = 'width:100%; height:auto; max-width:90vw; max-height:70vh; object-fit:cover;';
-      videoContainer.appendChild(video);
-
-      const btnContainer = document.createElement('div');
-      btnContainer.style.cssText = 'display:flex; gap:12px; margin-top:20px;';
-      const captureBtn = document.createElement('button');
-      captureBtn.innerText = '📸 Capture';
-      captureBtn.style.cssText = 'padding:12px 24px; background:linear-gradient(90deg,var(--gold),#ffd84d); color:#222; border:none; border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;';
-      const cancelBtn = document.createElement('button');
-      cancelBtn.innerText = 'Cancel';
-      cancelBtn.style.cssText = 'padding:12px 24px; background:rgba(255,255,255,0.2); color:#fff; border:2px solid rgba(255,255,255,0.4); border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;';
-      btnContainer.append(captureBtn, cancelBtn);
-      modal.append(videoContainer, btnContainer);
-      document.body.appendChild(modal);
-
-      captureBtn.addEventListener('click', async () => {
-        try {
-          const track = stream.getVideoTracks()[0];
-          let dataUrl;
-          if (window.ImageCapture && track) {
-            try {
-              const ic = new ImageCapture(track);
-              if (ic.takePhoto) {
-                const blob = await ic.takePhoto();
-                dataUrl = await new Promise(res => {
-                  const img = new Image();
-                  img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    canvas.getContext('2d').drawImage(img, 0, 0);
-                    res(canvas.toDataURL('image/png'));
-                  };
-                  img.src = URL.createObjectURL(blob);
-                });
-              }
-            } catch {}
-          }
-
-          if (!dataUrl) {
-            const canvas = document.createElement('canvas');
-            const vw = video.videoWidth || 1280;
-            const vh = video.videoHeight || 720;
-            canvas.width = vw;
-            canvas.height = vh;
-            const ctx = canvas.getContext('2d');
-            const isFrontCamera = track.getSettings().facingMode === 'user';
-            if (isFrontCamera) ctx.scale(-1, 1), ctx.drawImage(video, -vw, 0, vw, vh);
-            else ctx.drawImage(video, 0, 0, vw, vh);
-            dataUrl = canvas.toDataURL('image/png');
-          }
-
-          stream.getTracks().forEach(t => t.stop());
-          document.body.removeChild(modal);
-          loadPhoto(dataUrl, activeSlot);
-        } catch (err) {
-          stream.getTracks().forEach(t => t.stop());
-          document.body.removeChild(modal);
-          alert('Failed to capture photo.');
-        }
-      });
-
-      cancelBtn.addEventListener('click', () => {
-        stream.getTracks().forEach(t => t.stop());
-        document.body.removeChild(modal);
-      });
+    if (isiOS || isAndroid) {
+      // Try front camera
+      constraints.video.facingMode = { exact: 'user' };
     }
 
-    if (isiOS && navigator.mediaDevices?.getUserMedia) {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      // fallback if exact facingMode fails
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
-        return await openCameraModal(stream);
-      } catch { console.warn('iOS getUserMedia failed'); }
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      } catch (err2) {
+        return alert('Camera not available or permission denied.');
+      }
     }
 
-    // fallback: native file input for all devices
+    const v = document.createElement('video');
+    v.srcObject = stream;
+    v.playsInline = true;
+    v.autoplay = true;
+    v.muted = true;
+
+    const cameraModal = document.createElement('div');
+    cameraModal.style.cssText = `
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999;
+    `;
+
+    const videoContainer = document.createElement('div');
+    videoContainer.style.cssText = 'position: relative; border-radius:12px; overflow:hidden; box-shadow:0 12px 30px rgba(0,0,0,0.5);';
+    v.style.cssText = 'display:block; width:100%; max-width:90vw; max-height:70vh; object-fit:cover;';
+    videoContainer.appendChild(v);
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.cssText = 'display:flex; gap:12px; margin-top:20px;';
+    const captureBtn = document.createElement('button');
+    captureBtn.innerText = '📸 Capture';
+    captureBtn.style.cssText = 'padding:12px 24px; background:linear-gradient(90deg,var(--gold),#ffd84d); color:#222; border:none; border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.innerText = 'Cancel';
+    cancelBtn.style.cssText = 'padding:12px 24px; background:rgba(255,255,255,0.2); color:#fff; border:2px solid rgba(255,255,255,0.4); border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;';
+    buttonContainer.appendChild(captureBtn);
+    buttonContainer.appendChild(cancelBtn);
+
+    cameraModal.appendChild(videoContainer);
+    cameraModal.appendChild(buttonContainer);
+    document.body.appendChild(cameraModal);
+
+    // Capture logic
+    captureBtn.addEventListener('click', async () => {
+      try {
+        const track = stream.getVideoTracks()[0];
+        const tmp = document.createElement('canvas');
+        const ctx = tmp.getContext('2d');
+        const vw = v.videoWidth;
+        const vh = v.videoHeight;
+
+        tmp.width = vw;
+        tmp.height = vh;
+
+        // Mirror for front camera
+        const settings = track.getSettings ? track.getSettings() : {};
+        const isFront = settings.facingMode === 'user' || settings.facingMode === 'front';
+        if (isFront) {
+          ctx.translate(vw, 0);
+          ctx.scale(-1, 1);
+        }
+
+        ctx.drawImage(v, 0, 0, vw, vh);
+        const dataUrl = tmp.toDataURL('image/png');
+
+        stream.getTracks().forEach(t => t.stop());
+        document.body.removeChild(cameraModal);
+        loadPhoto(dataUrl, activeSlot);
+      } catch (err) {
+        stream.getTracks().forEach(t => t.stop());
+        document.body.removeChild(cameraModal);
+        alert('Failed to capture photo.');
+      }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      stream.getTracks().forEach(t => t.stop());
+      document.body.removeChild(cameraModal);
+    });
+
+  } else {
+    // fallback for devices without getUserMedia
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'user';
-    input.style.cssText = 'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0;';
+    input.accept = 'image/*;capture=camera';
+    input.style.cssText = 'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:999999;';
     document.body.appendChild(input);
-    input.addEventListener('change', e => {
-      const file = e.target.files?.[0];
+
+    input.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = ev => loadPhoto(ev.target.result, activeSlot);
+      reader.onload = (ev) => loadPhoto(ev.target.result, activeSlot);
       reader.readAsDataURL(file);
-      document.body.removeChild(input);
     });
+
     input.click();
-  });
+    setTimeout(() => { document.body.removeChild(input); }, 10000);
+  }
+});
+
 
   /* ---------- Load Photo ---------- */
   function loadPhoto(dataURL, slotIndex) {
@@ -473,3 +485,4 @@ if (document.getElementById('preview')) {
   draw();
   window.addEventListener('resize', draw);
 }
+
