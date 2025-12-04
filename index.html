@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Anniversary Photobooth — Landing</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="centered">
+    <div class="card landing-card">
+      <img src="logo.png" alt="Logo" class="brand-logo" />
+      <h1 class="title">Happy Anniversary</h1>
+      <p class="subtitle">made for madeline tan.</p>
+
+      <div class="actions">
+        <button id="openBooth" class="btn primary">Open Photobooth</button>
+        <button id="openLove" class="btn ghost">Read my message</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- love modal -->
+  <div id="modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal card">
+      <h2>Happy Anniversary 🤍</h2>
+      <h3>12 December 2025</h3>
+      <p class="modal-text">Madeline — every moment with you is a memory I treasure. Thank you for the laughter, the quiet moments, and all the little adventures. I love you.</p>
+      <p>- xavier low</p>
+      <div class="modal-actions">
+        <button id="closeModal" class="btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script src="script.js"></script>
+</body>
+</html>
