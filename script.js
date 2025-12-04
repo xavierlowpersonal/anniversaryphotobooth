@@ -203,20 +203,24 @@ if (document.getElementById('preview')) {
         const vw = v.videoWidth || 1280;
         const vh = v.videoHeight || 720;
 
-        // Create canvas - swap dimensions if video is in landscape
+        // Create canvas and context
         const tmp = document.createElement('canvas');
         const ctx = tmp.getContext('2d');
         
-        // Detect if video is landscape (wider than tall)
-        const isLandscape = vw > vh;
+        // Detect device orientation
+        const screenOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
         
-        if (isLandscape) {
-          // Video is landscape - set canvas to landscape and rotate content
-          tmp.width = vw;
-          tmp.height = vh;
+        // Video is typically portrait-locked (1280x720), but device may be in landscape
+        // If device is landscape but video is portrait-oriented, rotate 90 degrees
+        if (screenOrientation === 'landscape' && vw > vh) {
+          // Device in landscape with landscape video - rotate 90 degrees counter-clockwise
+          tmp.width = vh;
+          tmp.height = vw;
+          ctx.translate(0, vw);
+          ctx.rotate(-Math.PI / 2);
           ctx.drawImage(v, 0, 0, vw, vh);
         } else {
-          // Video is portrait - draw as-is
+          // Portrait mode or video already matches - draw as-is
           tmp.width = vw;
           tmp.height = vh;
           ctx.drawImage(v, 0, 0, vw, vh);
