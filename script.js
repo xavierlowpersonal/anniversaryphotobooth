@@ -111,143 +111,110 @@ if (document.getElementById('preview')) {
   /* Camera */
   useCamera.addEventListener('click', async () => {
     if (activeSlot === null) return alert('Select a slot first');
-    
-    // Check if device supports camera input
+
+    // Detect iOS Safari and prefer native camera via file input (handles orientation reliably)
+    const ua = navigator.userAgent || '';
+    const isiOS = /iP(hone|od|ad)/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
+    if (isiOS) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      // prefer front camera (selfie) like the previous behavior; change to 'environment' to use rear camera
+      input.capture = 'user';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) { document.body.removeChild(input); return; }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          loadPhoto(ev.target.result, activeSlot);
+          document.body.removeChild(input);
+        };
+        reader.readAsDataURL(file);
+      });
+      input.click();
+      return;
+    }
+
+    // Non-iOS flow: use getUserMedia modal
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       alert('Camera not supported on this device');
       return;
     }
-    
+
     try {
-      // Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
-      });
-      
-      // Create video element to display camera feed
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
       const v = document.createElement('video');
-      v.srcObject = stream;
-      v.play();
-      
-      // Create modal for camera preview
+      v.srcObject = stream; v.play();
+
       const cameraModal = document.createElement('div');
-      cameraModal.style.cssText = `
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.9);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-      `;
-      
+      cameraModal.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.9); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999;`;
       const videoContainer = document.createElement('div');
-      videoContainer.style.cssText = `
-        position: relative;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.5);
-      `;
-      v.style.cssText = `
-        display: block;
-        width: 100%;
-        height: auto;
-        max-width: 90vw;
-        max-height: 70vh;
-        object-fit: cover;
-      `;
+      videoContainer.style.cssText = `position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.5);`;
+      v.style.cssText = `display:block; width:100%; height:auto; max-width:90vw; max-height:70vh; object-fit:cover;`;
       videoContainer.appendChild(v);
-      
+
       const buttonContainer = document.createElement('div');
-      buttonContainer.style.cssText = `
-        display: flex;
-        gap: 12px;
-        margin-top: 20px;
-      `;
-      
-      const captureBtn = document.createElement('button');
-      captureBtn.innerText = '📸 Capture';
-      captureBtn.style.cssText = `
-        padding: 12px 24px;
-        background: linear-gradient(90deg, var(--gold), #ffd84d);
-        color: #222;
-        border: none;
-        border-radius: 12px;
-        font-weight: 700;
-        cursor: pointer;
-        font-size: 16px;
-      `;
-      
-      const cancelBtn = document.createElement('button');
-      cancelBtn.innerText = 'Cancel';
-      cancelBtn.style.cssText = `
-        padding: 12px 24px;
-        background: rgba(255,255,255,0.2);
-        color: #fff;
-        border: 2px solid rgba(255,255,255,0.4);
-        border-radius: 12px;
-        font-weight: 700;
-        cursor: pointer;
-        font-size: 16px;
-      `;
-      
-      buttonContainer.appendChild(captureBtn);
-      buttonContainer.appendChild(cancelBtn);
-      cameraModal.appendChild(videoContainer);
-      cameraModal.appendChild(buttonContainer);
-      document.body.appendChild(cameraModal);
-      
-      // Capture photo when button clicked (orientation-aware with rotation)
-      captureBtn.addEventListener('click', () => {
-        const vw = v.videoWidth || 1280;
-        const vh = v.videoHeight || 720;
+      buttonContainer.style.cssText = `display:flex; gap:12px; margin-top:20px;`;
+      const captureBtn = document.createElement('button'); captureBtn.innerText = '📸 Capture'; captureBtn.style.cssText = `padding:12px 24px; background:linear-gradient(90deg,var(--gold),#ffd84d); color:#222; border:none; border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;`;
+      const cancelBtn = document.createElement('button'); cancelBtn.innerText = 'Cancel'; cancelBtn.style.cssText = `padding:12px 24px; background:rgba(255,255,255,0.2); color:#fff; border:2px solid rgba(255,255,255,0.4); border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;`;
+      buttonContainer.appendChild(captureBtn); buttonContainer.appendChild(cancelBtn);
+      cameraModal.appendChild(videoContainer); cameraModal.appendChild(buttonContainer); document.body.appendChild(cameraModal);
 
-        // Create canvas and context
-        const tmp = document.createElement('canvas');
-        const ctx = tmp.getContext('2d');
-        
-        // Detect device orientation
-        const screenOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
-        
-        if (screenOrientation === 'landscape') {
-          // In landscape mode - swap dimensions and rotate 90 degrees counter-clockwise
-          tmp.width = vh;
-          tmp.height = vw;
-          ctx.translate(0, vw);
-          ctx.rotate(-Math.PI / 2);
-          ctx.drawImage(v, 0, 0, vw, vh);
-        } else {
-          // Portrait mode - draw normally
-          tmp.width = vw;
-          tmp.height = vh;
-          ctx.drawImage(v, 0, 0, vw, vh);
+      captureBtn.addEventListener('click', async () => {
+        try {
+          // Try ImageCapture where available
+          const track = stream.getVideoTracks()[0];
+          if (window.ImageCapture && track) {
+            try {
+              const ic = new ImageCapture(track);
+              if (ic.takePhoto) {
+                const blob = await ic.takePhoto();
+                const url = URL.createObjectURL(blob);
+                const img = new Image();
+                img.onload = () => {
+                  const tmp = document.createElement('canvas'); tmp.width = img.width; tmp.height = img.height; tmp.getContext('2d').drawImage(img,0,0);
+                  const dataUrl = tmp.toDataURL('image/png');
+                  stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal);
+                  loadPhoto(dataUrl, activeSlot); URL.revokeObjectURL(url);
+                };
+                img.src = url; return;
+              }
+            } catch (e) { /* fallback below */ }
+          }
+
+          // Fallback capture from video element with heuristics
+          const vw = v.videoWidth || 1280; const vh = v.videoHeight || 720; const rect = v.getBoundingClientRect();
+          const settings = (stream.getVideoTracks()[0] && stream.getVideoTracks()[0].getSettings) ? stream.getVideoTracks()[0].getSettings() : {};
+          const intrinsicLandscape = vw > vh; const displayLandscape = rect.width > rect.height;
+          const isFrontCamera = (settings.facingMode === 'user') || (settings.facingMode === 'front');
+          const tmp = document.createElement('canvas'); const ctx = tmp.getContext('2d');
+
+          if (displayLandscape && !intrinsicLandscape) {
+            tmp.width = vh; tmp.height = vw; ctx.translate(0, vw); ctx.rotate(-Math.PI/2);
+            if (isFrontCamera) { ctx.scale(-1,1); ctx.translate(-vw,0); }
+            ctx.drawImage(v,0,0,vw,vh);
+          } else if (!displayLandscape && intrinsicLandscape) {
+            tmp.width = vh; tmp.height = vw; ctx.translate(vh,0); ctx.rotate(Math.PI/2);
+            if (isFrontCamera) { ctx.scale(-1,1); ctx.translate(-vw,0); }
+            ctx.drawImage(v,0,0,vw,vh);
+          } else {
+            tmp.width = vw; tmp.height = vh;
+            if (isFrontCamera) { ctx.scale(-1,1); ctx.drawImage(v,-vw,0,vw,vh); } else { ctx.drawImage(v,0,0,vw,vh); }
+          }
+
+          const dataUrl = tmp.toDataURL('image/png'); stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal); loadPhoto(dataUrl, activeSlot);
+        } catch (err) {
+          stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal); alert('Failed to capture photo.');
         }
-
-        const dataUrl = tmp.toDataURL('image/png');
-
-        // Stop camera and close modal
-        stream.getTracks().forEach(t => t.stop());
-        document.body.removeChild(cameraModal);
-
-        // Load the captured photo
-        loadPhoto(dataUrl, activeSlot);
       });
-      
-      // Cancel button
-      cancelBtn.addEventListener('click', () => {
-        stream.getTracks().forEach(t => t.stop());
-        document.body.removeChild(cameraModal);
-      });
-      
+
+      cancelBtn.addEventListener('click', () => { stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal); });
     } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        alert('Camera permission denied. Please allow camera access in settings.');
-      } else if (err.name === 'NotFoundError') {
-        alert('No camera device found on this device.');
-      } else {
-        alert('Camera not available or permission denied');
-      }
+      if (err.name === 'NotAllowedError') alert('Camera permission denied. Please allow camera access in settings.');
+      else if (err.name === 'NotFoundError') alert('No camera device found on this device.');
+      else alert('Camera not available or permission denied');
     }
   });
 
@@ -307,16 +274,18 @@ if (document.getElementById('preview')) {
       if (t) { t.text = box.innerText; draw(); }
     });
 
+    // enable touch-based dragging (disable default touch actions)
+    box.style.touchAction = 'none';
     // pointerdown for dragging
     box.addEventListener('pointerdown', (e) => {
       // Don't drag if clicking on delete button
-      if (e.target === del) return;
+      if (e.target && e.target.closest && e.target.closest('.del-btn')) return;
       e.preventDefault();
       draggingBox = box;
       const r = box.getBoundingClientRect();
       dragOffset.x = e.clientX - r.left;
       dragOffset.y = e.clientY - r.top;
-      box.setPointerCapture(e.pointerId);
+      try { box.setPointerCapture(e.pointerId); } catch (err) {}
       setActiveBox(box);
     });
   });
