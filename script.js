@@ -112,37 +112,36 @@ if (document.getElementById('preview')) {
   useCamera.addEventListener('click', async () => {
     if (activeSlot === null) return alert('Select a slot first');
 
-    // Prefer native camera on mobile devices by using a file input with the
-    // `capture` attribute. Some Android browsers honor the attribute only when
-    // set as an HTML attribute (setAttribute), so we use that for better support.
-    const ua = navigator.userAgent || '';
-    const isMobile = /Mobi|Android|iP(hone|od|ad)/i.test(ua);
-    const isAndroid = /Android/i.test(ua);
+    // Always prefer native camera / file picker by using a file input with
+    // `capture`. This forces the device's native camera UI where supported
+    // and prevents the in-page getUserMedia modal on Android in-app browsers.
+    const input = document.createElement('input');
+    input.type = 'file';
+    // Use an accept form that some Android WebViews recognize
+    input.setAttribute('accept', 'image/*;capture=camera');
+    // Request rear camera by default; change to 'user' if you prefer front
+    input.setAttribute('capture', 'environment');
+    input.style.cssText = 'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:999999;';
+    document.body.appendChild(input);
 
-    if (isMobile) {
-      const input = document.createElement('input');
-      input.type = 'file';
-      // Some browsers respond better to the attribute form
-      input.setAttribute('accept', 'image/*');
-      // request rear camera by default on Android, front on iOS-like devices
-      input.setAttribute('capture', isAndroid ? 'environment' : 'user');
-      input.style.display = 'none';
-      document.body.appendChild(input);
-      input.addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) { document.body.removeChild(input); return; }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          loadPhoto(ev.target.result, activeSlot);
-          document.body.removeChild(input);
-        };
-        reader.readAsDataURL(file);
-      });
-      // Some browsers require the input to be in the document and visible-ish.
-      // We still keep it visually hidden but append before clicking.
-      input.click();
-      return;
-    }
+    let removed = false;
+    const cleanup = () => { if (!removed && document.body.contains(input)) { removed = true; try { document.body.removeChild(input); } catch (e) {} } };
+    const remover = setTimeout(() => { cleanup(); }, 10000);
+
+    input.addEventListener('change', (e) => {
+      clearTimeout(remover);
+      const file = e.target.files && e.target.files[0];
+      if (!file) { cleanup(); return; }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        loadPhoto(ev.target.result, activeSlot);
+        cleanup();
+      };
+      reader.readAsDataURL(file);
+    });
+
+    try { input.click(); } catch (e) { setTimeout(() => { try { input.click(); } catch (_) {} }, 100); }
+    return;
 
     // Non-iOS flow: use getUserMedia modal
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -235,12 +234,26 @@ if (document.getElementById('preview')) {
   }
 
   /* Add editable text box */
+  // Helper to place caret at end of contentEditable element
+  function placeCaretAtEnd(el) {
+    el.focus();
+    if (typeof window.getSelection !== 'undefined' && typeof document.createRange !== 'undefined') {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+
   addTextBtn.addEventListener('click', () => {
+    const DEFAULT_TEXT = 'Your text';
     const box = document.createElement('div');
-    box.className = 'text-box';
+    box.className = 'text-box placeholder';
     box.contentEditable = 'true';
-    box.innerText = 'Your text';
-    
+    box.innerText = DEFAULT_TEXT;
+
     // Set box position and append to DOM first
     const wrapRect = canvasWrap.getBoundingClientRect();
     box.style.position = 'absolute';
@@ -252,7 +265,10 @@ if (document.getElementById('preview')) {
     del.className = 'del-btn';
     del.innerText = '✕';
     del.title = 'Delete text';
-    del.style.pointerEvents = 'auto';  // Ensure delete button captures clicks
+    // Prevent the delete button from focusing the contentEditable when tapped
+    del.tabIndex = -1;
+    del.style.pointerEvents = 'auto';
+    del.addEventListener('mousedown', (ev) => { ev.preventDefault(); });
     box.appendChild(del);
 
     canvasWrap.appendChild(box);
@@ -261,12 +277,35 @@ if (document.getElementById('preview')) {
     const boxRect = box.getBoundingClientRect();
     const xPct = (boxRect.left - wrapRect.left) / wrapRect.width;
     const yPct = (boxRect.top - wrapRect.top) / wrapRect.height;
-    const tb = { el: box, text: box.innerText, xPct, yPct };
+    const tb = { el: box, text: '', xPct, yPct };
 
     textBoxes.push(tb);
     setActiveBox(box);
-    box.focus();
-    draw();
+    // Focus and select: clear placeholder on first focus
+    box.addEventListener('focus', () => {
+      if (box.classList.contains('placeholder')) {
+        box.classList.remove('placeholder');
+        box.innerText = '';
+      }
+      placeCaretAtEnd(box);
+    }, { once: true });
+
+    // Restore placeholder if left empty on blur
+    box.addEventListener('blur', () => {
+      if (!box.innerText || box.innerText.trim() === '') {
+        box.innerText = DEFAULT_TEXT;
+        box.classList.add('placeholder');
+      }
+    });
+
+    // Update model on input
+    box.addEventListener('input', () => {
+      const t = textBoxes.find(x => x.el === box);
+      if (t) {
+        t.text = box.classList.contains('placeholder') ? '' : box.innerText;
+        draw();
+      }
+    });
 
     del.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -274,11 +313,6 @@ if (document.getElementById('preview')) {
       canvasWrap.removeChild(box);
       textBoxes = textBoxes.filter(t => t.el !== box);
       draw();
-    });
-
-    box.addEventListener('input', () => {
-      const t = textBoxes.find(x => x.el === box);
-      if (t) { t.text = box.innerText; draw(); }
     });
 
     // enable touch-based dragging (disable default touch actions)
@@ -295,6 +329,10 @@ if (document.getElementById('preview')) {
       try { box.setPointerCapture(e.pointerId); } catch (err) {}
       setActiveBox(box);
     });
+
+    // Immediately focus to allow typing (user initiated click)
+    placeCaretAtEnd(box);
+    draw();
   });
 
   // dragging
