@@ -198,7 +198,7 @@ if (document.getElementById('preview')) {
       cameraModal.appendChild(buttonContainer);
       document.body.appendChild(cameraModal);
       
-      // Capture photo when button clicked (orientation-aware)
+      // Capture photo when button clicked (orientation-aware with flip correction)
       captureBtn.addEventListener('click', () => {
         const vw = v.videoWidth || 1280;
         const vh = v.videoHeight || 720;
@@ -210,19 +210,15 @@ if (document.getElementById('preview')) {
         // Detect device orientation
         const screenOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
         
-        // Video is typically portrait-locked (1280x720), but device may be in landscape
-        // If device is landscape but video is portrait-oriented, rotate 90 degrees
-        if (screenOrientation === 'landscape' && vw > vh) {
-          // Device in landscape with landscape video - rotate 90 degrees counter-clockwise
-          tmp.width = vh;
-          tmp.height = vw;
-          ctx.translate(0, vw);
-          ctx.rotate(-Math.PI / 2);
-          ctx.drawImage(v, 0, 0, vw, vh);
+        tmp.width = vw;
+        tmp.height = vh;
+        
+        if (screenOrientation === 'landscape') {
+          // In landscape mode - flip horizontally and vertically to correct inversion
+          ctx.scale(-1, -1);
+          ctx.drawImage(v, -vw, -vh, vw, vh);
         } else {
-          // Portrait mode or video already matches - draw as-is
-          tmp.width = vw;
-          tmp.height = vh;
+          // Portrait mode - draw normally
           ctx.drawImage(v, 0, 0, vw, vh);
         }
 
