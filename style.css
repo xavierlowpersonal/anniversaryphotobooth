@@ -37,8 +37,9 @@ html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe 
 .frame-thumb{width:68px;height:68px;border-radius:12px;object-fit:cover;cursor:pointer;border:2px solid rgba(255,255,255,0.6);box-shadow:0 6px 18px rgba(0,0,0,0.06)}
 .slots{display:flex;gap:8px;flex-wrap:wrap}
 .slot-btn{background:var(--pale);border-radius:10px;padding:8px 10px;border:1px solid rgba(0,0,0,0.06);cursor:pointer;font-weight:700}
-.photo-inputs{display:none;gap:8px}
-.input-file{padding:8px}
+.photo-inputs{display:none;gap:8px;flex-wrap:wrap}
+.input-file{padding:8px;flex:1;min-width:120px}
+.photo-inputs .btn{flex-shrink:0}
 .controls-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .secret-row{display:flex;gap:8px;align-items:center;margin-top:6px}
 .secret-input{padding:8px;border-radius:10px;border:1px solid rgba(0,0,0,0.06)}
