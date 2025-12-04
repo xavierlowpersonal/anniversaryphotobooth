@@ -288,7 +288,7 @@ if (document.getElementById('preview')) {
         box.innerText = '';
       }
       placeCaretAtEnd(box);
-    }, { once: true });
+    });
 
     // Restore placeholder if left empty on blur
     box.addEventListener('blur', () => {
@@ -317,16 +317,14 @@ if (document.getElementById('preview')) {
 
     // enable touch-based dragging (disable default touch actions)
     box.style.touchAction = 'none';
-    // pointerdown for dragging
+    // pointerdown: record potential drag start but don't steal focus immediately
     box.addEventListener('pointerdown', (e) => {
-      // Don't drag if clicking on delete button
+      // Don't start drag if clicking on delete button
       if (e.target && e.target.closest && e.target.closest('.del-btn')) return;
-      e.preventDefault();
-      draggingBox = box;
-      const r = box.getBoundingClientRect();
-      dragOffset.x = e.clientX - r.left;
-      dragOffset.y = e.clientY - r.top;
-      try { box.setPointerCapture(e.pointerId); } catch (err) {}
+      // record pending drag start
+      box.dataset.dragPending = 'true';
+      box.dataset.startX = String(e.clientX);
+      box.dataset.startY = String(e.clientY);
       setActiveBox(box);
     });
 
@@ -337,24 +335,51 @@ if (document.getElementById('preview')) {
 
   // dragging
   document.addEventListener('pointermove', (e) => {
-    if (!draggingBox) return;
-    const rect = canvasWrap.getBoundingClientRect();
-    let nx = e.clientX - rect.left - dragOffset.x;
-    let ny = e.clientY - rect.top - dragOffset.y;
-    nx = Math.max(0, Math.min(rect.width, nx));
-    ny = Math.max(0, Math.min(rect.height, ny));
-    draggingBox.style.left = nx + 'px';
-    draggingBox.style.top = ny + 'px';
-    // update model
-    const tb = textBoxes.find(t => t.el === draggingBox);
-    if (tb) { tb.xPct = nx / rect.width; tb.yPct = ny / rect.height; }
-    draw();
+    // If already dragging, move normally
+    if (draggingBox) {
+      const rect = canvasWrap.getBoundingClientRect();
+      let nx = e.clientX - rect.left - dragOffset.x;
+      let ny = e.clientY - rect.top - dragOffset.y;
+      nx = Math.max(0, Math.min(rect.width, nx));
+      ny = Math.max(0, Math.min(rect.height, ny));
+      draggingBox.style.left = nx + 'px';
+      draggingBox.style.top = ny + 'px';
+      // update model
+      const tb = textBoxes.find(t => t.el === draggingBox);
+      if (tb) { tb.xPct = nx / rect.width; tb.yPct = ny / rect.height; }
+      draw();
+      return;
+    }
+
+    // Not dragging yet: check for pending drag starts on any text box
+    const targetBox = e.target && e.target.closest && e.target.closest('.text-box');
+    if (targetBox && targetBox.dataset && targetBox.dataset.dragPending === 'true') {
+      const sx = parseFloat(targetBox.dataset.startX || '0');
+      const sy = parseFloat(targetBox.dataset.startY || '0');
+      const dx = Math.abs(e.clientX - sx);
+      const dy = Math.abs(e.clientY - sy);
+      const moved = Math.sqrt(dx*dx + dy*dy);
+      // start drag only after small movement threshold
+      if (moved > 6) {
+        draggingBox = targetBox;
+        const r = draggingBox.getBoundingClientRect();
+        dragOffset.x = e.clientX - r.left;
+        dragOffset.y = e.clientY - r.top;
+        try { draggingBox.setPointerCapture && draggingBox.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
   });
   document.addEventListener('pointerup', () => { if (draggingBox) draggingBox = null; });
 
   // clearing selection on background click
   canvasWrap.addEventListener('pointerdown', (e) => {
     if (e.target === canvasWrap) { clearActiveBox(); }
+  });
+
+  // clear pending drag flags on pointerup anywhere
+  document.addEventListener('pointerup', (e) => {
+    const boxes = document.querySelectorAll('.text-box');
+    boxes.forEach(b => { if (b.dataset) { delete b.dataset.dragPending; delete b.dataset.startX; delete b.dataset.startY; } });
   });
 
   function setActiveBox(el) {
