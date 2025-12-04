@@ -130,16 +130,93 @@ if (document.getElementById('preview')) {
   useCamera.addEventListener('click', async () => {
     if (activeSlot === null) return alert('Select a slot first');
 
-    // Always prefer native camera / file picker by using a file input with
-    // `capture`. Request the front-facing camera (`user`) by default on
-    // mobile so selfies open the front camera on iOS and Android.
+    // Prefer front-facing camera on iOS by using getUserMedia with
+    // `facingMode: 'user'`. If that fails, fall back to a native file input
+    // with capture='user'. For other platforms, open the native file input.
+    const ua = navigator.userAgent || '';
+    const isiOS = /iP(hone|od|ad)/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
+
+    if (isiOS && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // Try opening front camera via getUserMedia on iOS
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
+        const v = document.createElement('video');
+        v.srcObject = stream; v.play();
+
+        const cameraModal = document.createElement('div');
+        cameraModal.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.9); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999;`;
+        const videoContainer = document.createElement('div');
+        videoContainer.style.cssText = `position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.5);`;
+        v.style.cssText = `display:block; width:100%; height:auto; max-width:90vw; max-height:70vh; object-fit:cover;`;
+        videoContainer.appendChild(v);
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = `display:flex; gap:12px; margin-top:20px;`;
+        const captureBtn = document.createElement('button'); captureBtn.innerText = '📸 Capture'; captureBtn.style.cssText = `padding:12px 24px; background:linear-gradient(90deg,var(--gold),#ffd84d); color:#222; border:none; border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;`;
+        const cancelBtn = document.createElement('button'); cancelBtn.innerText = 'Cancel'; cancelBtn.style.cssText = `padding:12px 24px; background:rgba(255,255,255,0.2); color:#fff; border:2px solid rgba(255,255,255,0.4); border-radius:12px; font-weight:700; cursor:pointer; font-size:16px;`;
+        buttonContainer.appendChild(captureBtn); buttonContainer.appendChild(cancelBtn);
+        cameraModal.appendChild(videoContainer); cameraModal.appendChild(buttonContainer); document.body.appendChild(cameraModal);
+
+        captureBtn.addEventListener('click', async () => {
+          try {
+            const track = stream.getVideoTracks()[0];
+            if (window.ImageCapture && track) {
+              try {
+                const ic = new ImageCapture(track);
+                if (ic.takePhoto) {
+                  const blob = await ic.takePhoto();
+                  const url = URL.createObjectURL(blob);
+                  const img = new Image();
+                  img.onload = () => {
+                    const tmp = document.createElement('canvas'); tmp.width = img.width; tmp.height = img.height; tmp.getContext('2d').drawImage(img,0,0);
+                    const dataUrl = tmp.toDataURL('image/png');
+                    stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal);
+                    loadPhoto(dataUrl, activeSlot); URL.revokeObjectURL(url);
+                  };
+                  img.src = url; return;
+                }
+              } catch (e) { /* fallback below */ }
+            }
+
+            // Fallback: capture from video element
+            const vw = v.videoWidth || 1280; const vh = v.videoHeight || 720; const rect = v.getBoundingClientRect();
+            const settings = (stream.getVideoTracks()[0] && stream.getVideoTracks()[0].getSettings) ? stream.getVideoTracks()[0].getSettings() : {};
+            const intrinsicLandscape = vw > vh; const displayLandscape = rect.width > rect.height;
+            const isFrontCamera = (settings.facingMode === 'user') || (settings.facingMode === 'front');
+            const tmp = document.createElement('canvas'); const ctx = tmp.getContext('2d');
+
+            if (displayLandscape && !intrinsicLandscape) {
+              tmp.width = vh; tmp.height = vw; ctx.translate(0, vw); ctx.rotate(-Math.PI/2);
+              if (isFrontCamera) { ctx.scale(-1,1); ctx.translate(-vw,0); }
+              ctx.drawImage(v,0,0,vw,vh);
+            } else if (!displayLandscape && intrinsicLandscape) {
+              tmp.width = vh; tmp.height = vw; ctx.translate(vh,0); ctx.rotate(Math.PI/2);
+              if (isFrontCamera) { ctx.scale(-1,1); ctx.translate(-vw,0); }
+              ctx.drawImage(v,0,0,vw,vh);
+            } else {
+              tmp.width = vw; tmp.height = vh;
+              if (isFrontCamera) { ctx.scale(-1,1); ctx.drawImage(v,-vw,0,vw,vh); } else { ctx.drawImage(v,0,0,vw,vh); }
+            }
+
+            const dataUrl = tmp.toDataURL('image/png'); stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal); loadPhoto(dataUrl, activeSlot);
+          } catch (err) {
+            stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal); alert('Failed to capture photo.');
+          }
+        });
+
+        cancelBtn.addEventListener('click', () => { stream.getTracks().forEach(t => t.stop()); document.body.removeChild(cameraModal); });
+        return;
+      } catch (err) {
+        // If getUserMedia failed (permissions, etc.), fall back to native file input
+        console.warn('getUserMedia failed on iOS, falling back to native file input', err);
+      }
+    }
+
+    // Default: open native file input and request front-facing camera where supported
     const input = document.createElement('input');
     input.type = 'file';
-    // Use an accept hint that some Android WebViews recognize. Keep a
-    // simple accept fallback as well.
     input.setAttribute('accept', 'image/*;capture=camera');
     input.setAttribute('accept', 'image/*');
-    // Request front-facing camera
     input.setAttribute('capture', 'user');
     input.style.cssText = 'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:999999;';
     document.body.appendChild(input);
