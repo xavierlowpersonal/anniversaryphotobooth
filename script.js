@@ -203,40 +203,22 @@ if (document.getElementById('preview')) {
         const vw = v.videoWidth || 1280;
         const vh = v.videoHeight || 720;
 
-        // Determine screen orientation angle (fallbacks included)
-        const rawAngle = (screen && screen.orientation && screen.orientation.angle) !== undefined
-          ? screen.orientation.angle
-          : (typeof window.orientation === 'number' ? window.orientation : 0);
-        const angle = ((Number(rawAngle) || 0) % 360 + 360) % 360; // normalized 0..359
-
-        // Create canvas sized to final pixel orientation
+        // Create canvas - swap dimensions if video is in landscape
         const tmp = document.createElement('canvas');
         const ctx = tmp.getContext('2d');
-
-        // If angle is 90 or 270 we need to swap canvas dims
-        if (angle === 90 || angle === 270) {
-          tmp.width = vh;
-          tmp.height = vw;
-        } else {
+        
+        // Detect if video is landscape (wider than tall)
+        const isLandscape = vw > vh;
+        
+        if (isLandscape) {
+          // Video is landscape - set canvas to landscape and rotate content
           tmp.width = vw;
           tmp.height = vh;
-        }
-
-        // Draw with proper rotation so the saved image matches device orientation
-        if (angle === 90) {
-          ctx.translate(tmp.width, 0);
-          ctx.rotate(Math.PI / 2);
-          ctx.drawImage(v, 0, 0, vw, vh);
-        } else if (angle === 270) {
-          ctx.translate(0, tmp.height);
-          ctx.rotate(-Math.PI / 2);
-          ctx.drawImage(v, 0, 0, vw, vh);
-        } else if (angle === 180) {
-          ctx.translate(tmp.width, tmp.height);
-          ctx.rotate(Math.PI);
           ctx.drawImage(v, 0, 0, vw, vh);
         } else {
-          // angle === 0
+          // Video is portrait - draw as-is
+          tmp.width = vw;
+          tmp.height = vh;
           ctx.drawImage(v, 0, 0, vw, vh);
         }
 
