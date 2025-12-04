@@ -112,17 +112,20 @@ if (document.getElementById('preview')) {
   useCamera.addEventListener('click', async () => {
     if (activeSlot === null) return alert('Select a slot first');
 
-    // Detect platform and prefer native camera via file input on mobile devices
+    // Prefer native camera on mobile devices by using a file input with the
+    // `capture` attribute. Some Android browsers honor the attribute only when
+    // set as an HTML attribute (setAttribute), so we use that for better support.
     const ua = navigator.userAgent || '';
-    const isiOS = /iP(hone|od|ad)/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
-    const isAndroid = /Android/.test(ua);
+    const isMobile = /Mobi|Android|iP(hone|od|ad)/i.test(ua);
+    const isAndroid = /Android/i.test(ua);
 
-    // iOS: prefer front (selfie) like previous behavior
-    if (isiOS) {
+    if (isMobile) {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = 'image/*';
-      input.capture = 'user';
+      // Some browsers respond better to the attribute form
+      input.setAttribute('accept', 'image/*');
+      // request rear camera by default on Android, front on iOS-like devices
+      input.setAttribute('capture', isAndroid ? 'environment' : 'user');
       input.style.display = 'none';
       document.body.appendChild(input);
       input.addEventListener('change', (e) => {
@@ -135,29 +138,8 @@ if (document.getElementById('preview')) {
         };
         reader.readAsDataURL(file);
       });
-      input.click();
-      return;
-    }
-
-    // Android: prefer native camera via file input as well (uses rear camera by default)
-    if (isAndroid) {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      // request rear camera on Android by default; change to 'user' for front camera
-      input.capture = 'environment';
-      input.style.display = 'none';
-      document.body.appendChild(input);
-      input.addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) { document.body.removeChild(input); return; }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          loadPhoto(ev.target.result, activeSlot);
-          document.body.removeChild(input);
-        };
-        reader.readAsDataURL(file);
-      });
+      // Some browsers require the input to be in the document and visible-ish.
+      // We still keep it visually hidden but append before clicking.
       input.click();
       return;
     }
