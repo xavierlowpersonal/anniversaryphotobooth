@@ -267,6 +267,8 @@ if (document.getElementById('preview')) {
     del.title = 'Delete text';
     // Prevent the delete button from focusing the contentEditable when tapped
     del.tabIndex = -1;
+    // Make the delete element non-editable inside the contentEditable box
+    del.setAttribute('contenteditable', 'false');
     del.style.pointerEvents = 'auto';
     del.addEventListener('mousedown', (ev) => { ev.preventDefault(); });
     box.appendChild(del);
