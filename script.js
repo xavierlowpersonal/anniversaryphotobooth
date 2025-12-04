@@ -45,7 +45,7 @@ if (document.getElementById('preview')) {
 
   // Frames - ensure these files exist in frames/
   let frames = [
-    { id: 'none', src: null, name: 'No frame', color: '#f8bbd0' },
+    { id: 'none', src: null, name: 'NONE', color: '#f8bbd0' },
     { id: 'pokemon', src: 'frames/pokemon1.png', name: 'Pokemon' },
     { id: 'shinchan', src: 'frames/shinchan.png', name: 'Shin Chan' },
     { id: 'sanrio1', src: 'frames/sanrio1.png', name: 'Sanrio' }
@@ -211,11 +211,11 @@ if (document.getElementById('preview')) {
         const screenOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
         
         if (screenOrientation === 'landscape') {
-          // In landscape mode - swap dimensions and rotate 90 degrees clockwise
+          // In landscape mode - swap dimensions and rotate 90 degrees counter-clockwise
           tmp.width = vh;
           tmp.height = vw;
-          ctx.translate(vh, 0);
-          ctx.rotate(Math.PI / 2);
+          ctx.translate(0, vw);
+          ctx.rotate(-Math.PI / 2);
           ctx.drawImage(v, 0, 0, vw, vh);
         } else {
           // Portrait mode - draw normally
@@ -266,23 +266,27 @@ if (document.getElementById('preview')) {
     box.className = 'text-box';
     box.contentEditable = 'true';
     box.innerText = 'Your text';
-    // center visually in canvasWrap
+    
+    // Set box position and append to DOM first
     const wrapRect = canvasWrap.getBoundingClientRect();
-    box.style.left = (wrapRect.width / 2) + 'px';
-    box.style.top = (wrapRect.height / 2) + 'px';
+    box.style.position = 'absolute';
+    box.style.left = (wrapRect.width / 2 - 40) + 'px';  // Offset by half width for center
+    box.style.top = (wrapRect.height / 2 - 15) + 'px';  // Offset by half height for center
 
     // delete button
     const del = document.createElement('div');
     del.className = 'del-btn';
-    del.innerText = '';
+    del.innerText = '✕';
     del.title = 'Delete text';
+    del.style.pointerEvents = 'auto';  // Ensure delete button captures clicks
     box.appendChild(del);
 
     canvasWrap.appendChild(box);
 
-    // compute normalized pos
-    const xPct = (parseFloat(box.style.left) / wrapRect.width);
-    const yPct = (parseFloat(box.style.top) / wrapRect.height);
+    // Compute normalized percentages AFTER DOM insertion
+    const boxRect = box.getBoundingClientRect();
+    const xPct = (boxRect.left - wrapRect.left) / wrapRect.width;
+    const yPct = (boxRect.top - wrapRect.top) / wrapRect.height;
     const tb = { el: box, text: box.innerText, xPct, yPct };
 
     textBoxes.push(tb);
@@ -292,6 +296,7 @@ if (document.getElementById('preview')) {
 
     del.addEventListener('click', (ev) => {
       ev.stopPropagation();
+      ev.preventDefault();  // Prevent contentEditable from triggering
       canvasWrap.removeChild(box);
       textBoxes = textBoxes.filter(t => t.el !== box);
       draw();
@@ -304,6 +309,8 @@ if (document.getElementById('preview')) {
 
     // pointerdown for dragging
     box.addEventListener('pointerdown', (e) => {
+      // Don't drag if clicking on delete button
+      if (e.target === del) return;
       e.preventDefault();
       draggingBox = box;
       const r = box.getBoundingClientRect();
