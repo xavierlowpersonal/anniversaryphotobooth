@@ -131,14 +131,16 @@ if (document.getElementById('preview')) {
     if (activeSlot === null) return alert('Select a slot first');
 
     // Always prefer native camera / file picker by using a file input with
-    // `capture`. This forces the device's native camera UI where supported
-    // and prevents the in-page getUserMedia modal on Android in-app browsers.
+    // `capture`. Request the front-facing camera (`user`) by default on
+    // mobile so selfies open the front camera on iOS and Android.
     const input = document.createElement('input');
     input.type = 'file';
-    // Use an accept form that some Android WebViews recognize
+    // Use an accept hint that some Android WebViews recognize. Keep a
+    // simple accept fallback as well.
     input.setAttribute('accept', 'image/*;capture=camera');
-    // Request rear camera by default; change to 'user' if you prefer front
-    input.setAttribute('capture', 'environment');
+    input.setAttribute('accept', 'image/*');
+    // Request front-facing camera
+    input.setAttribute('capture', 'user');
     input.style.cssText = 'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:999999;';
     document.body.appendChild(input);
 
