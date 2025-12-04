@@ -111,21 +111,123 @@ if (document.getElementById('preview')) {
   /* Camera */
   useCamera.addEventListener('click', async () => {
     if (activeSlot === null) return alert('Select a slot first');
+    
+    // Check if device supports camera input
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Camera not supported on this device');
+      return;
+    }
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      // Request camera access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
+      });
+      
+      // Create video element to display camera feed
       const v = document.createElement('video');
       v.srcObject = stream;
-      await v.play();
-      await new Promise(r => setTimeout(r, 200));
-      const tmp = document.createElement('canvas');
-      tmp.width = v.videoWidth || PREVIEW_W;
-      tmp.height = v.videoHeight || PREVIEW_H;
-      tmp.getContext('2d').drawImage(v, 0, 0, tmp.width, tmp.height);
-      const dataUrl = tmp.toDataURL('image/png');
-      loadPhoto(dataUrl, activeSlot);
-      stream.getTracks().forEach(t => t.stop());
+      v.play();
+      
+      // Create modal for camera preview
+      const cameraModal = document.createElement('div');
+      cameraModal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+      
+      const videoContainer = document.createElement('div');
+      videoContainer.style.cssText = `
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+      `;
+      v.style.cssText = `
+        display: block;
+        width: 100%;
+        height: auto;
+        max-width: 90vw;
+        max-height: 70vh;
+        object-fit: cover;
+      `;
+      videoContainer.appendChild(v);
+      
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.cssText = `
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+      `;
+      
+      const captureBtn = document.createElement('button');
+      captureBtn.innerText = '📸 Capture';
+      captureBtn.style.cssText = `
+        padding: 12px 24px;
+        background: linear-gradient(90deg, var(--gold), #ffd84d);
+        color: #222;
+        border: none;
+        border-radius: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 16px;
+      `;
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.innerText = 'Cancel';
+      cancelBtn.style.cssText = `
+        padding: 12px 24px;
+        background: rgba(255,255,255,0.2);
+        color: #fff;
+        border: 2px solid rgba(255,255,255,0.4);
+        border-radius: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 16px;
+      `;
+      
+      buttonContainer.appendChild(captureBtn);
+      buttonContainer.appendChild(cancelBtn);
+      cameraModal.appendChild(videoContainer);
+      cameraModal.appendChild(buttonContainer);
+      document.body.appendChild(cameraModal);
+      
+      // Capture photo when button clicked
+      captureBtn.addEventListener('click', () => {
+        const tmp = document.createElement('canvas');
+        tmp.width = v.videoWidth || 1280;
+        tmp.height = v.videoHeight || 720;
+        tmp.getContext('2d').drawImage(v, 0, 0, tmp.width, tmp.height);
+        const dataUrl = tmp.toDataURL('image/png');
+        
+        // Stop camera and close modal
+        stream.getTracks().forEach(t => t.stop());
+        document.body.removeChild(cameraModal);
+        
+        // Load the captured photo
+        loadPhoto(dataUrl, activeSlot);
+      });
+      
+      // Cancel button
+      cancelBtn.addEventListener('click', () => {
+        stream.getTracks().forEach(t => t.stop());
+        document.body.removeChild(cameraModal);
+      });
+      
     } catch (err) {
-      alert('Camera not available or permission denied');
+      if (err.name === 'NotAllowedError') {
+        alert('Camera permission denied. Please allow camera access in settings.');
+      } else if (err.name === 'NotFoundError') {
+        alert('No camera device found on this device.');
+      } else {
+        alert('Camera not available or permission denied');
+      }
     }
   });
 
@@ -238,12 +340,22 @@ if (document.getElementById('preview')) {
         const img = photos[i];
         const imgRatio = img.width / img.height;
         const slotRatio = PREVIEW_W / slotH;
-        let dw, dh;
-        if (imgRatio > slotRatio) { dw = PREVIEW_W; dh = PREVIEW_W / imgRatio; }
-        else { dh = slotH; dw = slotH * imgRatio; }
-        const dx = (PREVIEW_W - dw) / 2;
-        const dy = y + (slotH - dh) / 2;
-        ctx.drawImage(img, dx, dy, dw, dh);
+        let sw, sh, sx, sy;
+        // Cover mode: crop image to fill slot without empty spaces
+        if (imgRatio > slotRatio) {
+          // Image is wider than slot: crop height
+          sh = img.height;
+          sw = img.height * slotRatio;
+          sx = (img.width - sw) / 2;
+          sy = 0;
+        } else {
+          // Image is taller than slot: crop width
+          sw = img.width;
+          sh = img.width / slotRatio;
+          sx = 0;
+          sy = (img.height - sh) / 2;
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, 0, y, PREVIEW_W, slotH);
       }
     }
 
@@ -290,12 +402,23 @@ if (document.getElementById('preview')) {
       const img = photos[i];
       const imgRatio = img.width / img.height;
       const slotRatio = EXPORT_W / slotH;
-      let dw, dh;
-      if (imgRatio > slotRatio) { dw = EXPORT_W; dh = EXPORT_W / imgRatio; }
-      else { dh = slotH; dw = slotH * imgRatio; }
-      const dx = (EXPORT_W - dw) / 2;
-      const dy = i * slotH + (slotH - dh) / 2;
-      octx.drawImage(img, dx, dy, dw, dh);
+      let sw, sh, sx, sy;
+      // Cover mode: crop image to fill slot without empty spaces
+      if (imgRatio > slotRatio) {
+        // Image is wider than slot: crop height
+        sh = img.height;
+        sw = img.height * slotRatio;
+        sx = (img.width - sw) / 2;
+        sy = 0;
+      } else {
+        // Image is taller than slot: crop width
+        sw = img.width;
+        sh = img.width / slotRatio;
+        sx = 0;
+        sy = (img.height - sh) / 2;
+      }
+      const dy = i * slotH;
+      octx.drawImage(img, sx, sy, sw, sh, 0, dy, EXPORT_W, slotH);
     }
 
     if (selectedFrame && selectedFrame.imgObj) {
