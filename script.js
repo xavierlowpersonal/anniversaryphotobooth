@@ -188,7 +188,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* ---------- Export HD (Photos + Frame + Text) ---------- */
   if (exportBtn) {
+    console.log('Export button found, attaching handler');
+
     exportBtn.addEventListener('click', () => {
+      console.log('Export clicked');
+
       // Create HD canvas
       const out = document.createElement('canvas');
       out.width = EXPORT_W;      // 1080
@@ -281,12 +285,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const link = document.createElement('a');
       link.download = `Anniversary_${new Date().toISOString().slice(0, 10)}.png`;
       link.href = out.toDataURL('image/png');
+
+      // More robust: add to DOM, click, then remove
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     });
+  } else {
+    console.log('Export button NOT found');
   }
 
-
+  
   draw();
   window.addEventListener('resize', draw);
 });
+
 
