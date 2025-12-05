@@ -186,6 +186,107 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectedFrame?.imgObj) ctx.drawImage(selectedFrame.imgObj, 0, 0, PREVIEW_W, PREVIEW_H);
   }
 
+    /* ---------- Export HD (Photos + Frame + Text) ---------- */
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      // Create HD canvas
+      const out = document.createElement('canvas');
+      out.width = EXPORT_W;      // 1080
+      out.height = EXPORT_H;     // 2700
+      const octx = out.getContext('2d');
+
+      // Background
+      octx.fillStyle = '#fff';
+      octx.fillRect(0, 0, EXPORT_W, EXPORT_H);
+
+      // ---- Draw the 4 photo slots in HD ----
+      const slotH = EXPORT_H / 4;
+      for (let i = 0; i < 4; i++) {
+        if (!photos[i]) continue; // skip empty slots
+
+        const img = photos[i];
+        const imgRatio = img.width / img.height;
+        const slotRatio = EXPORT_W / slotH;
+
+        let sw, sh, sx, sy;
+
+        // "Cover" mode: fill the slot and crop
+        if (imgRatio > slotRatio) {
+          // Image is wider than slot: crop sides
+          sh = img.height;
+          sw = img.height * slotRatio;
+          sx = (img.width - sw) / 2;
+          sy = 0;
+        } else {
+          // Image is taller than slot: crop top/bottom
+          sw = img.width;
+          sh = img.width / slotRatio;
+          sx = 0;
+          sy = (img.height - sh) / 2;
+        }
+
+        const dy = i * slotH;
+        octx.drawImage(img, sx, sy, sw, sh, 0, dy, EXPORT_W, slotH);
+      }
+
+      // ---- Draw selected frame on top ----
+      if (selectedFrame && selectedFrame.imgObj) {
+        octx.drawImage(selectedFrame.imgObj, 0, 0, EXPORT_W, EXPORT_H);
+      }
+
+      // ---- Draw HTML text boxes onto canvas ----
+      if (canvasWrap && textBoxes && textBoxes.length > 0) {
+        const wrapRect = canvasWrap.getBoundingClientRect();
+
+        textBoxes.forEach(tb => {
+          const el = tb.el;
+          if (!el) return;
+
+          const elRect = el.getBoundingClientRect();
+
+          // Center of the text box relative to wrap
+          const cx = (elRect.left + elRect.width / 2) - wrapRect.left;
+          const cy = (elRect.top + elRect.height / 2) - wrapRect.top;
+
+          // Convert to export canvas coordinates
+          const px = (cx / wrapRect.width) * EXPORT_W;
+          const py = (cy / wrapRect.height) * EXPORT_H;
+
+          const style = window.getComputedStyle(el);
+          const fontSizePx = parseFloat(style.fontSize) || 20;
+          const fontScale = EXPORT_W / wrapRect.width;
+          const finalFontSize = fontSizePx * fontScale;
+
+          const text = el.innerText.trim();
+          if (!text) return;
+
+          octx.save();
+          octx.font = `${finalFontSize}px "Playfair Display", serif`;
+          octx.textAlign = 'center';
+          octx.textBaseline = 'middle';
+
+          // Outline (shadow-ish)
+          octx.lineWidth = Math.max(2, finalFontSize * 0.08);
+          octx.strokeStyle = 'rgba(0,0,0,0.35)';
+          octx.strokeText(text, px, py);
+
+          // Fill
+          octx.fillStyle = '#fff';
+          octx.fillText(text, px, py);
+          octx.restore();
+        });
+      }
+
+      // ---- Trigger download ----
+      const link = document.createElement('a');
+      link.download = `Anniversary_${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = out.toDataURL('image/png');
+      link.click();
+    });
+  }
+
+
   draw();
   window.addEventListener('resize', draw);
 });
+
