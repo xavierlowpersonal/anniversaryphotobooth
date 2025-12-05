@@ -1,6 +1,6 @@
 /* ---------- DOM READY ---------- */
 document.addEventListener('DOMContentLoaded', () => {
-  /* ----- Modal & Navigation ----- */
+  /* ----- Modal & Navigation (index.html) ----- */
   const openLove = document.getElementById('openLove');
   const modal = document.getElementById('modal');
   const closeModal = document.getElementById('closeModal');
@@ -19,36 +19,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ---------- Photobooth Page Code ---------- */
   const preview = document.getElementById('preview');
-  if (!preview) return; // exit if photobooth page not loaded
+  if (!preview) return; // exit if we're not on photobooth.html
 
-  const framesRow = document.getElementById('framesRow');
-  const upload = document.getElementById('upload');
-  const useCamera = document.getElementById('useCamera');
-  const exportBtn = document.getElementById('exportBtn');
-  const canvasWrap = document.getElementById('canvasWrap');
-  const addTextBtn = document.getElementById('addText');
+  const framesRow   = document.getElementById('framesRow');
+  const upload      = document.getElementById('upload');
+  const useCamera   = document.getElementById('useCamera');
+  const exportBtn   = document.getElementById('exportBtn');
+  const canvasWrap  = document.getElementById('canvasWrap');
+  const addTextBtn  = document.getElementById('addText');
   const slotButtons = document.querySelectorAll('.slot-btn');
   const photoInputs = document.getElementById('photoInputs');
   const secretInput = document.getElementById('secretInput');
-  const trySecret = document.getElementById('trySecret');
-  const secretMsg = document.getElementById('secretMsg');
+  const trySecret   = document.getElementById('trySecret');
+  const secretMsg   = document.getElementById('secretMsg');
 
   /* ---------- Variables ---------- */
-  const PREVIEW_W = preview.width;
-  const PREVIEW_H = preview.height;
-  const EXPORT_W = 1080;
-  const EXPORT_H = 2700;
+  const PREVIEW_W = preview.width;   // 600
+  const PREVIEW_H = preview.height;  // 1500
+  const EXPORT_W  = 1080;
+  const EXPORT_H  = 2700;
 
   let frames = [
-    { id: 'none', src: null, name: 'NONE', color: '#f8bbd0' },
+    { id: 'none',    src: null,                 name: 'NONE',   color: '#f8bbd0' },
     { id: 'pokemon', src: 'frames/pokemon1.png', name: 'Pokemon' },
-    { id: 'shinchan', src: 'frames/shinchan.png', name: 'Shin Chan' },
-    { id: 'sanrio1', src: 'frames/sanrio1.png', name: 'Sanrio' }
+    { id: 'shinchan',src: 'frames/shinchan.png', name: 'Shin Chan' },
+    { id: 'sanrio1', src: 'frames/sanrio1.png',  name: 'Sanrio' }
   ];
 
-  let anniversaryFrame = { id: 'mha', src: 'frames/mha.png', name: 'My Hero Academia' };
+  // Secret frame
   const SECRET_WORDS = ['zoey'];
+  let anniversaryFrame = { id: 'mha', src: 'frames/mha.png', name: 'My Hero Academia' };
 
+  // Preload frame images
   frames.forEach(f => {
     if (f.src) {
       f.imgObj = new Image();
@@ -58,14 +60,19 @@ document.addEventListener('DOMContentLoaded', () => {
   anniversaryFrame.imgObj = new Image();
   anniversaryFrame.imgObj.src = anniversaryFrame.src;
 
-  let photos = [null, null, null, null];
-  let activeSlot = null;
+  let photos        = [null, null, null, null];  // 4 slots
+  let activeSlot    = null;
   let selectedFrame = frames[0];
-  let textBoxes = [];           // { el: HTMLDivElement }
-  let activeTextBox = null;
+
+  // Text boxes tracking
+  let textBoxes      = []; // [{ el, contentEl }]
+  let activeTextBox  = null;
+  let draggingBox    = null;
+  let dragOffset     = { x: 0, y: 0 };
 
   /* ---------- Build Frames UI ---------- */
   function buildFramesUI() {
+    if (!framesRow) return;
     framesRow.innerHTML = '';
     frames.forEach(f => {
       const thumb = document.createElement('img');
@@ -124,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const input = document.createElement('input');
       input.type = 'file';
       input.setAttribute('accept', 'image/*;capture=camera');
-      input.setAttribute('capture', 'environment'); // rear camera by default
+      input.setAttribute('capture', 'environment'); // rear camera
       input.style.cssText =
         'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:9999;';
       document.body.appendChild(input);
@@ -156,39 +163,92 @@ document.addEventListener('DOMContentLoaded', () => {
     img.src = dataURL;
   }
 
-  /* ---------- Text Boxes (Draggable + Deletable) ---------- */
+  /* ---------- Text Box Dragging Helpers (Mouse + Touch) ---------- */
+  function startDragBox(box, clientX, clientY) {
+    draggingBox = box;
 
+    const boxRect  = box.getBoundingClientRect();
+    const wrapRect = canvasWrap.getBoundingClientRect();
+
+    dragOffset.x = clientX - boxRect.left;
+    dragOffset.y = clientY - boxRect.top;
+
+    box._wrapRect = wrapRect;
+
+    document.addEventListener('mousemove', onBoxMouseMove);
+    document.addEventListener('mouseup', stopDragBox);
+    document.addEventListener('touchmove', onBoxTouchMove, { passive: false });
+    document.addEventListener('touchend', stopDragBox);
+  }
+
+  function onBoxMouseMove(e) {
+    if (!draggingBox) return;
+    moveBoxToPointer(draggingBox, e.clientX, e.clientY);
+  }
+
+  function onBoxTouchMove(e) {
+    if (!draggingBox) return;
+    const touch = e.touches[0];
+    moveBoxToPointer(draggingBox, touch.clientX, touch.clientY);
+    e.preventDefault(); // prevent page scroll while dragging
+  }
+
+  function moveBoxToPointer(box, clientX, clientY) {
+    const wrapRect = box._wrapRect || canvasWrap.getBoundingClientRect();
+
+    let x = clientX - wrapRect.left - dragOffset.x;
+    let y = clientY - wrapRect.top - dragOffset.y;
+
+    // clamp inside wrapper
+    const maxX = wrapRect.width - box.offsetWidth;
+    const maxY = wrapRect.height - box.offsetHeight;
+
+    x = Math.max(0, Math.min(x, maxX));
+    y = Math.max(0, Math.min(y, maxY));
+
+    box.style.left = x + 'px';
+    box.style.top  = y + 'px';
+  }
+
+  function stopDragBox() {
+    if (!draggingBox) return;
+    draggingBox._wrapRect = null;
+    draggingBox = null;
+
+    document.removeEventListener('mousemove', onBoxMouseMove);
+    document.removeEventListener('mouseup', stopDragBox);
+    document.removeEventListener('touchmove', onBoxTouchMove);
+    document.removeEventListener('touchend', stopDragBox);
+  }
+
+  /* ---------- Text Boxes (Editable + Draggable + Deletable) ---------- */
   function createTextBox() {
     if (!canvasWrap) return;
 
+    // Outer box (positioned & draggable)
     const box = document.createElement('div');
-    box.className = 'text-box';
-    box.contentEditable = 'true';
-    box.innerText = 'Your text';
+    box.className = 'text-box';      // matches your CSS
     box.style.position = 'absolute';
-    box.style.touchAction = 'none';   // prevent scrolling while dragging
-    box.style.pointerEvents = 'auto'; // ensure it can receive events
+    box.style.touchAction = 'none';
+    box.style.pointerEvents = 'auto';
+    box.style.zIndex = '10';
 
     const wrapRect = canvasWrap.getBoundingClientRect();
     box.style.left = (wrapRect.width / 2 - 40) + 'px';
-    box.style.top = (wrapRect.height / 2 - 15) + 'px';
+    box.style.top  = (wrapRect.height / 2 - 15) + 'px';
 
-    // Delete "×" button
-    const delBtn = document.createElement('button');
-    delBtn.innerHTML = '×';
-    delBtn.className = 'text-box-delete';
-    delBtn.style.position = 'absolute';
-    delBtn.style.top = '-8px';
-    delBtn.style.right = '-8px';
-    delBtn.style.width = '20px';
-    delBtn.style.height = '20px';
-    delBtn.style.borderRadius = '50%';
-    delBtn.style.border = 'none';
-    delBtn.style.cursor = 'pointer';
-    delBtn.style.fontSize = '14px';
-    delBtn.style.lineHeight = '20px';
-    delBtn.style.padding = '0';
+    // Inner span for editable text (so we don't nuke the delete button)
+    const textSpan = document.createElement('span');
+    textSpan.className = 'text-content';
+    textSpan.contentEditable = 'true';
+    textSpan.innerText = 'Your text';
 
+    // Delete button (matches .text-box .del-btn)
+    const delBtn = document.createElement('div');
+    delBtn.className = 'del-btn';
+    delBtn.textContent = '×';
+
+    // Delete logic
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (canvasWrap.contains(box)) {
@@ -197,75 +257,35 @@ document.addEventListener('DOMContentLoaded', () => {
       textBoxes = textBoxes.filter(tb => tb.el !== box);
     });
 
+    box.appendChild(textSpan);
     box.appendChild(delBtn);
     canvasWrap.appendChild(box);
-    textBoxes.push({ el: box });
-    box.focus();
 
-    // Clear "Your text" when user starts typing something else
-    box.addEventListener('input', () => {
-      if (box.innerText === 'Your text') {
-        box.innerText = '';
-        box.appendChild(delBtn);
+    textBoxes.push({ el: box, contentEl: textSpan });
+    activeTextBox = box;
+
+    // Clear placeholder on first focus in the text span
+    textSpan.addEventListener('focus', () => {
+      if (textSpan.innerText.trim() === 'Your text') {
+        textSpan.innerText = '';
       }
     });
 
-    // ----- Dragging with pointer events -----
-    let isDragging = false;
-    let startX = 0;
-    let startY = 0;
-    let startLeft = 0;
-    let startTop = 0;
-    let dragWrapRect = null;
-
-    box.addEventListener('pointerdown', (e) => {
-      if (e.target === delBtn) return; // don't drag when clicking delete
-
-      isDragging = true;
-      activeTextBox = box;
-      dragWrapRect = canvasWrap.getBoundingClientRect();
-
-      const boxRect = box.getBoundingClientRect();
-      startX = e.clientX;
-      startY = e.clientY;
-      startLeft = boxRect.left - dragWrapRect.left;
-      startTop = boxRect.top - dragWrapRect.top;
-
-      box.setPointerCapture(e.pointerId);
+    // Drag with mouse (only when not clicking inside text)
+    box.addEventListener('mousedown', (e) => {
+      if (e.target === delBtn) return;
+      if (e.target.closest('.text-content')) return; // let user select/edit text
+      e.preventDefault(); // avoid text selection when dragging
+      startDragBox(box, e.clientX, e.clientY);
     });
 
-    box.addEventListener('pointermove', (e) => {
-      if (!isDragging || !dragWrapRect) return;
-
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-
-      let x = startLeft + dx;
-      let y = startTop + dy;
-
-      // Clamp inside canvasWrap
-      const maxX = dragWrapRect.width - box.offsetWidth;
-      const maxY = dragWrapRect.height - box.offsetHeight;
-
-      x = Math.max(0, Math.min(x, maxX));
-      y = Math.max(0, Math.min(y, maxY));
-
-      box.style.left = x + 'px';
-      box.style.top = y + 'px';
-    });
-
-    function endDrag(e) {
-      isDragging = false;
-      dragWrapRect = null;
-      if (e && e.pointerId !== undefined) {
-        try {
-          box.releasePointerCapture(e.pointerId);
-        } catch (_) {}
-      }
-    }
-
-    box.addEventListener('pointerup', endDrag);
-    box.addEventListener('pointercancel', endDrag);
+    // Drag with touch
+    box.addEventListener('touchstart', (e) => {
+      if (e.target === delBtn) return;
+      if (e.target.closest('.text-content')) return;
+      const touch = e.touches[0];
+      startDragBox(box, touch.clientX, touch.clientY);
+    }, { passive: false });
 
     return box;
   }
@@ -287,15 +307,18 @@ document.addEventListener('DOMContentLoaded', () => {
         anniversaryFrame.imgObj.src = anniversaryFrame.src;
         buildFramesUI();
       }
-      secretMsg.textContent = 'PLUS ULTRA!!✨';
+      if (secretMsg) secretMsg.textContent = 'PLUS ULTRA!!✨';
     } else {
-      secretMsg.textContent = '—❌ Wrong! Hint: name of our future';
+      if (secretMsg) secretMsg.textContent = '—❌ Wrong! Hint: name of our future';
     }
   }
-  trySecret?.addEventListener('click', () => checkSecret(secretInput.value.trim()));
-  secretInput?.addEventListener('keyup', (e) => {
-    if (e.key === 'Enter') checkSecret(secretInput.value.trim());
-  });
+
+  if (trySecret && secretInput) {
+    trySecret.addEventListener('click', () => checkSecret(secretInput.value.trim()));
+    secretInput.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') checkSecret(secretInput.value.trim());
+    });
+  }
 
   /* ---------- Draw Canvas (Preview) ---------- */
   function draw() {
@@ -312,8 +335,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillRect(0, y, PREVIEW_W, slotH);
       } else {
         const img = photos[i];
-        const imgRatio = img.width / img.height;
+        const imgRatio  = img.width / img.height;
         const slotRatio = PREVIEW_W / slotH;
+
         let sw, sh, sx, sy;
         if (imgRatio > slotRatio) {
           // wider than slot
@@ -332,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    if (selectedFrame?.imgObj) {
+    if (selectedFrame && selectedFrame.imgObj) {
       ctx.drawImage(selectedFrame.imgObj, 0, 0, PREVIEW_W, PREVIEW_H);
     }
   }
@@ -340,36 +364,31 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ---------- Export HD (Photos + Frame + Text) ---------- */
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-      // Create HD canvas
       const out = document.createElement('canvas');
-      out.width = EXPORT_W;      // 1080
-      out.height = EXPORT_H;     // 2700
+      out.width  = EXPORT_W;
+      out.height = EXPORT_H;
       const octx = out.getContext('2d');
 
       // Background
       octx.fillStyle = '#fff';
       octx.fillRect(0, 0, EXPORT_W, EXPORT_H);
 
-      // ---- Draw the 4 photo slots in HD ----
+      // Photos
       const slotH = EXPORT_H / 4;
       for (let i = 0; i < 4; i++) {
-        if (!photos[i]) continue; // skip empty slots
+        if (!photos[i]) continue;
 
         const img = photos[i];
-        const imgRatio = img.width / img.height;
+        const imgRatio  = img.width / img.height;
         const slotRatio = EXPORT_W / slotH;
 
         let sw, sh, sx, sy;
-
-        // "Cover" mode: fill the slot and crop
         if (imgRatio > slotRatio) {
-          // Image is wider than slot: crop sides
           sh = img.height;
           sw = img.height * slotRatio;
           sx = (img.width - sw) / 2;
           sy = 0;
         } else {
-          // Image is taller than slot: crop top/bottom
           sw = img.width;
           sh = img.width / slotRatio;
           sx = 0;
@@ -380,43 +399,41 @@ document.addEventListener('DOMContentLoaded', () => {
         octx.drawImage(img, sx, sy, sw, sh, 0, dy, EXPORT_W, slotH);
       }
 
-      // ---- Draw selected frame on top ----
+      // Frame
       if (selectedFrame && selectedFrame.imgObj) {
         octx.drawImage(selectedFrame.imgObj, 0, 0, EXPORT_W, EXPORT_H);
       }
 
-      // ---- Draw HTML text boxes onto canvas ----
-      if (canvasWrap && textBoxes && textBoxes.length > 0) {
+      // Text boxes
+      if (canvasWrap && textBoxes.length > 0) {
         const wrapRect = canvasWrap.getBoundingClientRect();
 
         textBoxes.forEach(tb => {
-          const el = tb.el;
-          if (!el) return;
+          const box     = tb.el;
+          const content = tb.contentEl || box;
+          if (!box || !content) return;
 
-          const elRect = el.getBoundingClientRect();
+          const text = content.innerText.trim();
+          if (!text || text === 'Your text') return;
 
-          // Center of the text box relative to wrap
-          const cx = (elRect.left + elRect.width / 2) - wrapRect.left;
-          const cy = (elRect.top + elRect.height / 2) - wrapRect.top;
+          const boxRect = box.getBoundingClientRect();
+          const cx = (boxRect.left + boxRect.width / 2) - wrapRect.left;
+          const cy = (boxRect.top  + boxRect.height / 2) - wrapRect.top;
 
-          // Convert to export canvas coordinates
-          const px = (cx / wrapRect.width) * EXPORT_W;
+          const px = (cx / wrapRect.width)  * EXPORT_W;
           const py = (cy / wrapRect.height) * EXPORT_H;
 
-          const style = window.getComputedStyle(el);
-          const fontSizePx = parseFloat(style.fontSize) || 20;
-          const fontScale = EXPORT_W / wrapRect.width;
+          const style = window.getComputedStyle(content);
+          const fontSizePx = parseFloat(style.fontSize) || 24;
+          const fontScale  = EXPORT_W / wrapRect.width;
           const finalFontSize = fontSizePx * fontScale;
-
-          const text = el.innerText.replace('×', '').trim();
-          if (!text) return;
 
           octx.save();
           octx.font = `${finalFontSize}px "Playfair Display", serif`;
           octx.textAlign = 'center';
           octx.textBaseline = 'middle';
 
-          // Outline
+          // Stroke (outline)
           octx.lineWidth = Math.max(2, finalFontSize * 0.08);
           octx.strokeStyle = 'rgba(0,0,0,0.35)';
           octx.strokeText(text, px, py);
@@ -428,17 +445,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // ---- Trigger download ----
       const link = document.createElement('a');
       link.download = `Anniversary_${new Date().toISOString().slice(0, 10)}.png`;
       link.href = out.toDataURL('image/png');
-
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     });
   }
 
+  // Initial draw + resize
   draw();
   window.addEventListener('resize', draw);
 });
