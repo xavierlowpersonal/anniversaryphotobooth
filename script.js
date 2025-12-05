@@ -60,59 +60,128 @@ document.addEventListener('DOMContentLoaded', () => {
   let draggingBox = null;
   let dragOffset = { x: 0, y: 0 };
 
-    /* ---------- Text Box Dragging Helpers ---------- */
-  function startDrag(e, box) {
-    draggingBox = box;
-    const boxRect = box.getBoundingClientRect();
+  /* ---------- Text Boxes (Draggable + Deletable, Pointer Events) ---------- */
+
+  function createTextBox() {
+    if (!canvasWrap) return;
+
+    const box = document.createElement('div');
+    box.className = 'text-box placeholder';
+    box.contentEditable = 'true';
+    box.innerText = 'Your text';
+    box.style.position = 'absolute';
+    box.style.touchAction = 'none'; // prevent scroll while dragging
+
     const wrapRect = canvasWrap.getBoundingClientRect();
+    box.style.left = (wrapRect.width / 2 - 40) + 'px';
+    box.style.top = (wrapRect.height / 2 - 15) + 'px';
 
-    dragOffset.x = e.clientX - boxRect.left;
-    dragOffset.y = e.clientY - boxRect.top;
+    // Small delete "×" button
+    const delBtn = document.createElement('button');
+    delBtn.innerHTML = '×';
+    delBtn.className = 'text-box-delete';
+    delBtn.style.position = 'absolute';
+    delBtn.style.top = '-8px';
+    delBtn.style.right = '-8px';
+    delBtn.style.width = '20px';
+    delBtn.style.height = '20px';
+    delBtn.style.borderRadius = '50%';
+    delBtn.style.border = 'none';
+    delBtn.style.cursor = 'pointer';
+    delBtn.style.fontSize = '14px';
+    delBtn.style.lineHeight = '20px';
+    delBtn.style.padding = '0';
 
-    // Mark active
-    activeTextBox = box;
+    // Delete logic
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (canvasWrap.contains(box)) {
+        canvasWrap.removeChild(box);
+      }
+      textBoxes = textBoxes.filter(tb => tb.el !== box);
+    });
 
-    document.addEventListener('mousemove', onDragMove);
-    document.addEventListener('mouseup', stopDrag);
-    document.addEventListener('touchmove', onDragTouchMove, { passive: false });
-    document.addEventListener('touchend', stopDrag);
+    box.appendChild(delBtn);
+    canvasWrap.appendChild(box);
+    textBoxes.push({ el: box });
+    box.focus();
+
+    // Clear placeholder on first focus
+    box.addEventListener('focus', () => {
+      if (box.classList.contains('placeholder')) {
+        box.innerText = '';
+        box.classList.remove('placeholder');
+        box.appendChild(delBtn); // re-attach delete button after innerText wipe
+      }
+    });
+
+    // ----- Drag with pointer events -----
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let dragWrapRect = null;
+
+    box.addEventListener('pointerdown', (e) => {
+      if (e.target === delBtn) return; // don't drag when clicking delete
+      isDragging = true;
+      activeTextBox = box;
+      dragWrapRect = canvasWrap.getBoundingClientRect();
+
+      const boxRect = box.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = boxRect.left - dragWrapRect.left;
+      startTop = boxRect.top - dragWrapRect.top;
+
+      box.setPointerCapture(e.pointerId);
+    });
+
+    box.addEventListener('pointermove', (e) => {
+      if (!isDragging || !dragWrapRect) return;
+
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      let x = startLeft + dx;
+      let y = startTop + dy;
+
+      // Clamp inside canvasWrap
+      const maxX = dragWrapRect.width - box.offsetWidth;
+      const maxY = dragWrapRect.height - box.offsetHeight;
+
+      x = Math.max(0, Math.min(x, maxX));
+      y = Math.max(0, Math.min(y, maxY));
+
+      box.style.left = x + 'px';
+      box.style.top = y + 'px';
+    });
+
+    box.addEventListener('pointerup', (e) => {
+      isDragging = false;
+      dragWrapRect = null;
+      try {
+        box.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    });
+
+    box.addEventListener('pointercancel', (e) => {
+      isDragging = false;
+      dragWrapRect = null;
+      try {
+        box.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    });
+
+    return box;
   }
 
-  function onDragMove(e) {
-    if (!draggingBox) return;
-    moveBoxToPointer(e, draggingBox);
-  }
-
-  function onDragTouchMove(e) {
-    if (!draggingBox) return;
-    const touch = e.touches[0];
-    moveBoxToPointer(touch, draggingBox);
-    e.preventDefault();
-  }
-
-  function moveBoxToPointer(point, box) {
-    const wrapRect = canvasWrap.getBoundingClientRect();
-
-    let x = point.clientX - wrapRect.left - dragOffset.x;
-    let y = point.clientY - wrapRect.top - dragOffset.y;
-
-    // Clamp inside the wrap
-    const maxX = wrapRect.width - box.offsetWidth;
-    const maxY = wrapRect.height - box.offsetHeight;
-
-    x = Math.max(0, Math.min(x, maxX));
-    y = Math.max(0, Math.min(y, maxY));
-
-    box.style.left = x + 'px';
-    box.style.top = y + 'px';
-  }
-
-  function stopDrag() {
-    draggingBox = null;
-    document.removeEventListener('mousemove', onDragMove);
-    document.removeEventListener('mouseup', stopDrag);
-    document.removeEventListener('touchmove', onDragTouchMove);
-    document.removeEventListener('touchend', stopDrag);
+  /* Hook up Add Text button */
+  if (addTextBtn && canvasWrap) {
+    addTextBtn.addEventListener('click', () => {
+      createTextBox();
+    });
   }
 
   /* ---------- Build Frames UI ---------- */
@@ -406,6 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
   draw();
   window.addEventListener('resize', draw);
 });
+
 
 
 
