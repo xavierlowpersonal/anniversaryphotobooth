@@ -60,6 +60,61 @@ document.addEventListener('DOMContentLoaded', () => {
   let draggingBox = null;
   let dragOffset = { x: 0, y: 0 };
 
+    /* ---------- Text Box Dragging Helpers ---------- */
+  function startDrag(e, box) {
+    draggingBox = box;
+    const boxRect = box.getBoundingClientRect();
+    const wrapRect = canvasWrap.getBoundingClientRect();
+
+    dragOffset.x = e.clientX - boxRect.left;
+    dragOffset.y = e.clientY - boxRect.top;
+
+    // Mark active
+    activeTextBox = box;
+
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', stopDrag);
+    document.addEventListener('touchmove', onDragTouchMove, { passive: false });
+    document.addEventListener('touchend', stopDrag);
+  }
+
+  function onDragMove(e) {
+    if (!draggingBox) return;
+    moveBoxToPointer(e, draggingBox);
+  }
+
+  function onDragTouchMove(e) {
+    if (!draggingBox) return;
+    const touch = e.touches[0];
+    moveBoxToPointer(touch, draggingBox);
+    e.preventDefault();
+  }
+
+  function moveBoxToPointer(point, box) {
+    const wrapRect = canvasWrap.getBoundingClientRect();
+
+    let x = point.clientX - wrapRect.left - dragOffset.x;
+    let y = point.clientY - wrapRect.top - dragOffset.y;
+
+    // Clamp inside the wrap
+    const maxX = wrapRect.width - box.offsetWidth;
+    const maxY = wrapRect.height - box.offsetHeight;
+
+    x = Math.max(0, Math.min(x, maxX));
+    y = Math.max(0, Math.min(y, maxY));
+
+    box.style.left = x + 'px';
+    box.style.top = y + 'px';
+  }
+
+  function stopDrag() {
+    draggingBox = null;
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', stopDrag);
+    document.removeEventListener('touchmove', onDragTouchMove);
+    document.removeEventListener('touchend', stopDrag);
+  }
+
   /* ---------- Build Frames UI ---------- */
   function buildFramesUI() {
     framesRow.innerHTML = '';
@@ -130,20 +185,72 @@ document.addEventListener('DOMContentLoaded', () => {
     img.src = dataURL;
   }
 
-  /* ---------- Text Boxes ---------- */
-  addTextBtn?.addEventListener('click', () => {
-    const box = document.createElement('div');
-    box.className = 'text-box placeholder';
-    box.contentEditable = 'true';
-    box.innerText = 'Your text';
-    box.style.position = 'absolute';
-    const wrapRect = canvasWrap.getBoundingClientRect();
-    box.style.left = (wrapRect.width / 2 - 40) + 'px';
-    box.style.top = (wrapRect.height / 2 - 15) + 'px';
-    canvasWrap.appendChild(box);
-    textBoxes.push({ el: box, text: '', xPct: 0.5, yPct: 0.5 });
-    box.focus();
-  });
+  /* ---------- Text Boxes (Draggable + Deletable) ---------- */
+  if (addTextBtn && canvasWrap) {
+    addTextBtn.addEventListener('click', () => {
+      const box = document.createElement('div');
+      box.className = 'text-box placeholder';
+      box.contentEditable = 'true';
+      box.innerText = 'Your text';
+      box.style.position = 'absolute';
+
+      const wrapRect = canvasWrap.getBoundingClientRect();
+      box.style.left = (wrapRect.width / 2 - 40) + 'px';
+      box.style.top = (wrapRect.height / 2 - 15) + 'px';
+
+      // Small delete "x" button inside the text box
+      const delBtn = document.createElement('button');
+      delBtn.innerHTML = '×';
+      delBtn.className = 'text-box-delete';
+      delBtn.style.position = 'absolute';
+      delBtn.style.top = '-8px';
+      delBtn.style.right = '-8px';
+      delBtn.style.width = '20px';
+      delBtn.style.height = '20px';
+      delBtn.style.borderRadius = '50%';
+      delBtn.style.border = 'none';
+      delBtn.style.cursor = 'pointer';
+      delBtn.style.fontSize = '14px';
+      delBtn.style.lineHeight = '20px';
+      delBtn.style.padding = '0';
+
+      // Delete logic
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        canvasWrap.removeChild(box);
+        textBoxes = textBoxes.filter(tb => tb.el !== box);
+      });
+
+      box.appendChild(delBtn);
+
+      canvasWrap.appendChild(box);
+      textBoxes.push({ el: box });
+
+      box.focus();
+
+      // Clear placeholder on first focus
+      box.addEventListener('focus', () => {
+        if (box.classList.contains('placeholder')) {
+          box.innerText = '';
+          box.classList.remove('placeholder');
+          box.appendChild(delBtn); // re-attach delete button after innerText change
+        }
+      });
+
+      // Start drag (mouse)
+      box.addEventListener('mousedown', (e) => {
+        if (e.target === delBtn) return; // don't drag when clicking delete
+        startDrag(e, box);
+      });
+
+      // Start drag (touch)
+      box.addEventListener('touchstart', (e) => {
+        if (e.target === delBtn) return;
+        const touch = e.touches[0];
+        startDrag(touch, box);
+      }, { passive: false });
+    });
+  }
 
   /* ---------- Secret Frame ---------- */
   function checkSecret(input) {
@@ -299,5 +406,6 @@ document.addEventListener('DOMContentLoaded', () => {
   draw();
   window.addEventListener('resize', draw);
 });
+
 
 
