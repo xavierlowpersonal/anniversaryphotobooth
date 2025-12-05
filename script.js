@@ -49,34 +49,131 @@ document.addEventListener('DOMContentLoaded', () => {
   let anniversaryFrame = { id: 'mha', src: 'frames/mha.png', name: 'My Hero Academia' };
   const SECRET_WORDS = ['zoey'];
 
-  frames.forEach(f => { if (f.src) { f.imgObj = new Image(); f.imgObj.src = f.src; } });
-  anniversaryFrame.imgObj = new Image(); anniversaryFrame.imgObj.src = anniversaryFrame.src;
+  frames.forEach(f => {
+    if (f.src) {
+      f.imgObj = new Image();
+      f.imgObj.src = f.src;
+    }
+  });
+  anniversaryFrame.imgObj = new Image();
+  anniversaryFrame.imgObj.src = anniversaryFrame.src;
 
   let photos = [null, null, null, null];
   let activeSlot = null;
   let selectedFrame = frames[0];
-  let textBoxes = [];
+  let textBoxes = [];           // { el: HTMLDivElement }
   let activeTextBox = null;
-  let draggingBox = null;
-  let dragOffset = { x: 0, y: 0 };
 
-  /* ---------- Text Boxes (Draggable + Deletable, Pointer Events) ---------- */
+  /* ---------- Build Frames UI ---------- */
+  function buildFramesUI() {
+    framesRow.innerHTML = '';
+    frames.forEach(f => {
+      const thumb = document.createElement('img');
+      thumb.className = 'frame-thumb';
+      thumb.alt = f.name;
+      thumb.src =
+        f.src ||
+        'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="100%" height="100%" fill="#f3c7d1"/></svg>';
+      thumb.title = f.name;
+      thumb.addEventListener('click', () => {
+        selectedFrame = f;
+        draw();
+      });
+      framesRow.appendChild(thumb);
+    });
+  }
+  buildFramesUI();
+
+  /* ---------- Slot Selection ---------- */
+  slotButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      slotButtons.forEach(b => b.classList.remove('active-slot'));
+      btn.classList.add('active-slot');
+      activeSlot = Number(btn.dataset.slot);
+      if (photoInputs) photoInputs.style.display = 'flex';
+    });
+  });
+
+  /* ---------- File Upload ---------- */
+  if (upload) {
+    upload.addEventListener('change', (e) => {
+      if (activeSlot === null) {
+        alert('Select a slot first');
+        upload.value = '';
+        return;
+      }
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        loadPhoto(ev.target.result, activeSlot);
+        upload.value = '';
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /* ---------- Use Native Camera ---------- */
+  if (useCamera) {
+    useCamera.addEventListener('click', () => {
+      if (activeSlot === null) {
+        alert('Select a slot first');
+        return;
+      }
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.setAttribute('accept', 'image/*;capture=camera');
+      input.setAttribute('capture', 'environment'); // rear camera by default
+      input.style.cssText =
+        'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:9999;';
+      document.body.appendChild(input);
+
+      input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) {
+          document.body.removeChild(input);
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          loadPhoto(ev.target.result, activeSlot);
+          document.body.removeChild(input);
+        };
+        reader.readAsDataURL(file);
+      });
+
+      input.click();
+    });
+  }
+
+  function loadPhoto(dataURL, slotIndex) {
+    const img = new Image();
+    img.onload = () => {
+      photos[slotIndex] = img;
+      draw();
+    };
+    img.src = dataURL;
+  }
+
+  /* ---------- Text Boxes (Draggable + Deletable) ---------- */
 
   function createTextBox() {
     if (!canvasWrap) return;
 
     const box = document.createElement('div');
-    box.className = 'text-box placeholder';
+    box.className = 'text-box';
     box.contentEditable = 'true';
     box.innerText = 'Your text';
     box.style.position = 'absolute';
-    box.style.touchAction = 'none'; // prevent scroll while dragging
+    box.style.touchAction = 'none';   // prevent scrolling while dragging
+    box.style.pointerEvents = 'auto'; // ensure it can receive events
 
     const wrapRect = canvasWrap.getBoundingClientRect();
     box.style.left = (wrapRect.width / 2 - 40) + 'px';
     box.style.top = (wrapRect.height / 2 - 15) + 'px';
 
-    // Small delete "×" button
+    // Delete "×" button
     const delBtn = document.createElement('button');
     delBtn.innerHTML = '×';
     delBtn.className = 'text-box-delete';
@@ -92,7 +189,6 @@ document.addEventListener('DOMContentLoaded', () => {
     delBtn.style.lineHeight = '20px';
     delBtn.style.padding = '0';
 
-    // Delete logic
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (canvasWrap.contains(box)) {
@@ -106,16 +202,15 @@ document.addEventListener('DOMContentLoaded', () => {
     textBoxes.push({ el: box });
     box.focus();
 
-    // Clear placeholder on first focus
-    box.addEventListener('focus', () => {
-      if (box.classList.contains('placeholder')) {
+    // Clear "Your text" when user starts typing something else
+    box.addEventListener('input', () => {
+      if (box.innerText === 'Your text') {
         box.innerText = '';
-        box.classList.remove('placeholder');
-        box.appendChild(delBtn); // re-attach delete button after innerText wipe
+        box.appendChild(delBtn);
       }
     });
 
-    // ----- Drag with pointer events -----
+    // ----- Dragging with pointer events -----
     let isDragging = false;
     let startX = 0;
     let startY = 0;
@@ -125,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     box.addEventListener('pointerdown', (e) => {
       if (e.target === delBtn) return; // don't drag when clicking delete
+
       isDragging = true;
       activeTextBox = box;
       dragWrapRect = canvasWrap.getBoundingClientRect();
@@ -158,166 +254,25 @@ document.addEventListener('DOMContentLoaded', () => {
       box.style.top = y + 'px';
     });
 
-    box.addEventListener('pointerup', (e) => {
+    function endDrag(e) {
       isDragging = false;
       dragWrapRect = null;
-      try {
-        box.releasePointerCapture(e.pointerId);
-      } catch (_) {}
-    });
+      if (e && e.pointerId !== undefined) {
+        try {
+          box.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+      }
+    }
 
-    box.addEventListener('pointercancel', (e) => {
-      isDragging = false;
-      dragWrapRect = null;
-      try {
-        box.releasePointerCapture(e.pointerId);
-      } catch (_) {}
-    });
+    box.addEventListener('pointerup', endDrag);
+    box.addEventListener('pointercancel', endDrag);
 
     return box;
   }
 
-  /* Hook up Add Text button */
   if (addTextBtn && canvasWrap) {
     addTextBtn.addEventListener('click', () => {
       createTextBox();
-    });
-  }
-
-  /* ---------- Build Frames UI ---------- */
-  function buildFramesUI() {
-    framesRow.innerHTML = '';
-    frames.forEach(f => {
-      const thumb = document.createElement('img');
-      thumb.className = 'frame-thumb';
-      thumb.alt = f.name;
-      thumb.src = f.src || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="100%" height="100%" fill="#f3c7d1"/></svg>';
-      thumb.title = f.name;
-      thumb.addEventListener('click', () => { selectedFrame = f; draw(); });
-      framesRow.appendChild(thumb);
-    });
-  }
-  buildFramesUI();
-
-  /* ---------- Slot Selection ---------- */
-  slotButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      slotButtons.forEach(b => b.classList.remove('active-slot'));
-      btn.classList.add('active-slot');
-      activeSlot = Number(btn.dataset.slot);
-      if (photoInputs) photoInputs.style.display = 'flex';
-    });
-  });
-
-  /* ---------- File Upload ---------- */
-  if (upload) {
-    upload.addEventListener('change', (e) => {
-      if (activeSlot === null) return alert('Select a slot first');
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => { loadPhoto(ev.target.result, activeSlot); upload.value = ''; };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  /* ---------- Use Native Camera ---------- */
-  if (useCamera) {
-    useCamera.addEventListener('click', () => {
-      if (activeSlot === null) return alert('Select a slot first');
-
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.setAttribute('accept', 'image/*;capture=camera');
-      input.setAttribute('capture', 'environment'); // rear camera by default
-      input.style.cssText = 'position:fixed; left:0; top:0; width:1px; height:1px; opacity:0.01; z-index:9999;';
-      document.body.appendChild(input);
-
-      input.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          loadPhoto(ev.target.result, activeSlot);
-          document.body.removeChild(input);
-        };
-        reader.readAsDataURL(file);
-      });
-
-      input.click();
-    });
-  }
-
-  function loadPhoto(dataURL, slotIndex) {
-    const img = new Image();
-    img.onload = () => { photos[slotIndex] = img; draw(); };
-    img.src = dataURL;
-  }
-
-  /* ---------- Text Boxes (Draggable + Deletable) ---------- */
-  if (addTextBtn && canvasWrap) {
-    addTextBtn.addEventListener('click', () => {
-      const box = document.createElement('div');
-      box.className = 'text-box placeholder';
-      box.contentEditable = 'true';
-      box.innerText = 'Your text';
-      box.style.position = 'absolute';
-
-      const wrapRect = canvasWrap.getBoundingClientRect();
-      box.style.left = (wrapRect.width / 2 - 40) + 'px';
-      box.style.top = (wrapRect.height / 2 - 15) + 'px';
-
-      // Small delete "x" button inside the text box
-      const delBtn = document.createElement('button');
-      delBtn.innerHTML = '×';
-      delBtn.className = 'text-box-delete';
-      delBtn.style.position = 'absolute';
-      delBtn.style.top = '-8px';
-      delBtn.style.right = '-8px';
-      delBtn.style.width = '20px';
-      delBtn.style.height = '20px';
-      delBtn.style.borderRadius = '50%';
-      delBtn.style.border = 'none';
-      delBtn.style.cursor = 'pointer';
-      delBtn.style.fontSize = '14px';
-      delBtn.style.lineHeight = '20px';
-      delBtn.style.padding = '0';
-
-      // Delete logic
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        canvasWrap.removeChild(box);
-        textBoxes = textBoxes.filter(tb => tb.el !== box);
-      });
-
-      box.appendChild(delBtn);
-
-      canvasWrap.appendChild(box);
-      textBoxes.push({ el: box });
-
-      box.focus();
-
-      // Clear placeholder on first focus
-      box.addEventListener('focus', () => {
-        if (box.classList.contains('placeholder')) {
-          box.innerText = '';
-          box.classList.remove('placeholder');
-          box.appendChild(delBtn); // re-attach delete button after innerText change
-        }
-      });
-
-      // Start drag (mouse)
-      box.addEventListener('mousedown', (e) => {
-        if (e.target === delBtn) return; // don't drag when clicking delete
-        startDrag(e, box);
-      });
-
-      // Start drag (touch)
-      box.addEventListener('touchstart', (e) => {
-        if (e.target === delBtn) return;
-        const touch = e.touches[0];
-        startDrag(touch, box);
-      }, { passive: false });
     });
   }
 
@@ -338,37 +293,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   trySecret?.addEventListener('click', () => checkSecret(secretInput.value.trim()));
-  secretInput?.addEventListener('keyup', (e) => { if (e.key === 'Enter') checkSecret(secretInput.value.trim()); });
+  secretInput?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') checkSecret(secretInput.value.trim());
+  });
 
-  /* ---------- Draw Canvas ---------- */
+  /* ---------- Draw Canvas (Preview) ---------- */
   function draw() {
     const ctx = preview.getContext('2d');
     ctx.clearRect(0, 0, PREVIEW_W, PREVIEW_H);
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
+
     const slotH = PREVIEW_H / 4;
     for (let i = 0; i < 4; i++) {
       const y = i * slotH;
-      if (!photos[i]) ctx.fillStyle = '#eee', ctx.fillRect(0, y, PREVIEW_W, slotH);
-      else {
+      if (!photos[i]) {
+        ctx.fillStyle = '#eee';
+        ctx.fillRect(0, y, PREVIEW_W, slotH);
+      } else {
         const img = photos[i];
         const imgRatio = img.width / img.height;
         const slotRatio = PREVIEW_W / slotH;
         let sw, sh, sx, sy;
-        if (imgRatio > slotRatio) { sh = img.height; sw = img.height * slotRatio; sx = (img.width - sw) / 2; sy = 0; }
-        else { sw = img.width; sh = img.width / slotRatio; sx = 0; sy = (img.height - sh) / 2; }
+        if (imgRatio > slotRatio) {
+          // wider than slot
+          sh = img.height;
+          sw = img.height * slotRatio;
+          sx = (img.width - sw) / 2;
+          sy = 0;
+        } else {
+          // taller than slot
+          sw = img.width;
+          sh = img.width / slotRatio;
+          sx = 0;
+          sy = (img.height - sh) / 2;
+        }
         ctx.drawImage(img, sx, sy, sw, sh, 0, y, PREVIEW_W, slotH);
       }
     }
-    if (selectedFrame?.imgObj) ctx.drawImage(selectedFrame.imgObj, 0, 0, PREVIEW_W, PREVIEW_H);
+
+    if (selectedFrame?.imgObj) {
+      ctx.drawImage(selectedFrame.imgObj, 0, 0, PREVIEW_W, PREVIEW_H);
+    }
   }
 
-    /* ---------- Export HD (Photos + Frame + Text) ---------- */
+  /* ---------- Export HD (Photos + Frame + Text) ---------- */
   if (exportBtn) {
-    console.log('Export button found, attaching handler');
-
     exportBtn.addEventListener('click', () => {
-      console.log('Export clicked');
-
       // Create HD canvas
       const out = document.createElement('canvas');
       out.width = EXPORT_W;      // 1080
@@ -437,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const fontScale = EXPORT_W / wrapRect.width;
           const finalFontSize = fontSizePx * fontScale;
 
-          const text = el.innerText.trim();
+          const text = el.innerText.replace('×', '').trim();
           if (!text) return;
 
           octx.save();
@@ -445,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
           octx.textAlign = 'center';
           octx.textBaseline = 'middle';
 
-          // Outline (shadow-ish)
+          // Outline
           octx.lineWidth = Math.max(2, finalFontSize * 0.08);
           octx.strokeStyle = 'rgba(0,0,0,0.35)';
           octx.strokeText(text, px, py);
@@ -462,20 +433,12 @@ document.addEventListener('DOMContentLoaded', () => {
       link.download = `Anniversary_${new Date().toISOString().slice(0, 10)}.png`;
       link.href = out.toDataURL('image/png');
 
-      // More robust: add to DOM, click, then remove
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     });
-  } else {
-    console.log('Export button NOT found');
   }
 
-  
   draw();
   window.addEventListener('resize', draw);
 });
-
-
-
-
